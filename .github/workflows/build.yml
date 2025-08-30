@@ -1,6 +1,4 @@
-# 这个配置使用统一的可重用工作流
-# 复制自 oscms-deployment/examples/eureka-server-workflow.yml
-
+# Eureka Server CI/CD Pipeline
 name: Build Eureka Server
 
 on:
@@ -9,12 +7,71 @@ on:
   pull_request:
     branches: [ main, master ]
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: oscms-project/oscms-eureka-server
+
 jobs:
   build:
-    uses: oscms-project/oscms-deployment/.github/workflows/reusable-microservice-build.yml@main
-    with:
-      service-name: oscms-eureka-server
-      service-port: "8761"
-      needs-common: false
-      dockerfile-path: "./Dockerfile"
-    secrets: inherit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Cache Maven packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+
+    - name: Run tests
+      run: mvn test
+      env:
+        SPRING_PROFILES_ACTIVE: test
+
+    - name: Build with Maven
+      run: mvn clean package -DskipTests
+
+    - name: Log in to Container Registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+    - name: Verify Docker image
+      if: github.event_name != 'pull_request'
+      run: |
+        echo "Docker image built and pushed successfully:"
+        echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
