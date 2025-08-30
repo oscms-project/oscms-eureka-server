@@ -1,0 +1,44 @@
+# 测试环境配置 - Eureka Server
+spring:
+  profiles:
+    active: test
+  application:
+    name: oscms-eureka-server
+
+# 服务器配置
+server:
+  port: 0  # 随机端口，避免测试冲突
+
+# Eureka 服务器配置
+eureka:
+  instance:
+    hostname: localhost
+    prefer-ip-address: true
+  client:
+    # 测试环境下不注册自己
+    register-with-eureka: false
+    fetch-registry: false
+    service-url:
+      defaultZone: http://localhost:${server.port}/eureka/
+  server:
+    # 测试环境下关闭自我保护机制
+    enable-self-preservation: false
+    eviction-interval-timer-in-ms: 10000
+
+# 管理端点配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+# 日志配置
+logging:
+  level:
+    com.netflix.eureka: WARN
+    com.netflix.discovery: WARN
+    org.springframework.cloud.netflix.eureka: WARN
+    root: INFO
